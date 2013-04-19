@@ -536,15 +536,15 @@ public class SplunkJavaAgent {
 			event.addPair("methodDesc", desc);
 			event.addPair("threadID", Thread.currentThread().getId());
 			event.addPair("threadName", Thread.currentThread().getName());
-			
+
 			try {
 				StackTraceElement ste = Thread.currentThread().getStackTrace()[3];
-				if(ste != null)
-				  event.addPair("lineNumber", ste.getLineNumber());
-				  event.addPair("sourceFileName", ste.getFileName());
+				if (ste != null)
+					event.addPair("lineNumber", ste.getLineNumber());
+				event.addPair("sourceFileName", ste.getFileName());
 			} catch (Exception e1) {
 			}
-			
+
 			addUserTags(event);
 			try {
 				agent.eventQueue.put(event);

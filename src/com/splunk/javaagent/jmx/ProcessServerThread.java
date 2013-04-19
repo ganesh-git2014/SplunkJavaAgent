@@ -11,9 +11,11 @@ import javax.management.MBeanServerConnection;
 import javax.management.NotificationFilter;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
-import javax.management.openmbean.CompositeDataSupport;
+import javax.management.openmbean.CompositeData;
+
 import javax.management.openmbean.CompositeType;
-import javax.management.openmbean.TabularDataSupport;
+import javax.management.openmbean.TabularData;
+
 
 import com.splunk.javaagent.SplunkLogEvent;
 import com.splunk.javaagent.jmx.config.Attribute;
@@ -136,9 +138,10 @@ public class ProcessServerThread extends Thread {
 											.getOutputname();
 									if (outputname != null
 											&& !outputname.isEmpty())
-										mBeanAttributes.put(
-												operation.getOutputname(),
-												resolveObjectToString(result));
+										//mBeanAttributes.put(operation
+										//.getOutputname(),
+										//resolveObjectToString(result));
+								extractAttributeValue(result,mBeanAttributes,operation.getOutputname());
 								} catch (Exception e) {
 
 									// logger.error("Error : " +
@@ -178,7 +181,7 @@ public class ProcessServerThread extends Thread {
 								// if the attribute pattern is multi level, loop
 								// through the levels until the value is found
 								for (String token : tokens) {
-
+									
 									// get root attribute object the first time
 									if (attributeValue == null) {
 										try {
@@ -191,22 +194,25 @@ public class ProcessServerThread extends Thread {
 											// logger.error("Error : "
 											// + e.getMessage());
 										}
-									} else if (attributeValue instanceof CompositeDataSupport) {
+									} else if (attributeValue instanceof CompositeData) {
 										try {
-
-											attributeValue = ((CompositeDataSupport) attributeValue)
+											
+											attributeValue = ((CompositeData) attributeValue)
 													.get(token);
+											
+											
 										} catch (Exception e) {
 
+											e.printStackTrace();
 											// logger.error("Error : "
 											// + e.getMessage());
 										}
-									} else if (attributeValue instanceof TabularDataSupport) {
+									} else if (attributeValue instanceof TabularData) {
 										try {
 
 											Object[] key = { token };
 
-											attributeValue = ((TabularDataSupport) attributeValue)
+											attributeValue = ((TabularData) attributeValue)
 													.get(key);
 
 										} catch (Exception e) {
@@ -214,11 +220,12 @@ public class ProcessServerThread extends Thread {
 											// logger.error("Error : "
 											// + e.getMessage());
 										}
-									} else {
-
+									}
+									else {
+										
 									}
 								}
-
+								
 								mBeanAttributes.put(singular.getOutputname(),
 										resolveObjectToString(attributeValue));
 
@@ -297,10 +304,10 @@ public class ProcessServerThread extends Thread {
 
 				// logger.error("Error : " + e.getMessage());
 			}
-		} else if (attributeValue instanceof CompositeDataSupport) {
+		} else if (attributeValue instanceof CompositeData) {
 
 			try {
-				CompositeDataSupport cds = ((CompositeDataSupport) attributeValue);
+				CompositeData cds = ((CompositeData) attributeValue);
 				CompositeType ct = cds.getCompositeType();
 
 				Set<String> keys = ct.keySet();
@@ -314,10 +321,10 @@ public class ProcessServerThread extends Thread {
 
 				// logger.error("Error : " + e.getMessage());
 			}
-		} else if (attributeValue instanceof TabularDataSupport) {
+		} else if (attributeValue instanceof TabularData) {
 			try {
-				TabularDataSupport tds = ((TabularDataSupport) attributeValue);
-				Set<Object> keys = tds.keySet();
+				TabularData tds = ((TabularData) attributeValue);
+				Set keys = tds.keySet();
 				for (Object key : keys) {
 
 					Object keyName = ((List) key).get(0);

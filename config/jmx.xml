@@ -11,7 +11,7 @@
 
 -->
 
-    
+
 <mbean domain="java.lang" properties="type=Threading">
  
 <attribute name="TotalStartedThreadCount" outputname="started"/>

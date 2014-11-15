@@ -19,7 +19,17 @@ public class SplunkClassFileTransformer implements ClassFileTransformer {
 			Class classBeingRedefined, ProtectionDomain protectionDomain,
 			byte[] classFileBuffer) throws IllegalClassFormatException {
 
-		if (this.getClass().getClassLoader().equals(loader)) {
+		boolean proceed = true;
+		
+		try {
+			//a hacky test to ensure that the class being instrumented
+			//can see the required SplunkJavaEgent classes
+			loader.loadClass("com.splunk.javaagent.SplunkLogEvent");
+		} catch (ClassNotFoundException e) {
+			proceed = false;
+		}
+				
+		if (proceed) {
 
 			if (!SplunkJavaAgent.isBlackListed(className)
 					&& SplunkJavaAgent.isWhiteListed(className))

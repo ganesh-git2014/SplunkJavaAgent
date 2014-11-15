@@ -31,6 +31,8 @@ public class SplunkJavaAgent {
 	private List<FilterListItem> blackList;
 	private boolean traceMethodExited;
 	private boolean traceMethodEntered;
+	//private boolean traceMethodParameterValues;
+	//private boolean traceMethodReturnValues;
 	private boolean traceClassLoaded;
 	private boolean traceErrors;
 	private boolean traceJMX;
@@ -47,6 +49,8 @@ public class SplunkJavaAgent {
 	private String appID;
 
 	private TransporterThread transporterThread;
+
+	
 
 	public SplunkJavaAgent() {
 
@@ -104,7 +108,12 @@ public class SplunkJavaAgent {
 				"trace.methodExited", "true"));
 		this.traceErrors = Boolean.parseBoolean(agent.props.getProperty(
 				"trace.errors", "true"));
-
+		/**
+		this.traceMethodParameterValues = Boolean.parseBoolean(agent.props.getProperty(
+				"trace.methodParameterValues", "true"));
+		this.traceMethodReturnValues = Boolean.parseBoolean(agent.props.getProperty(
+				"trace.methodReturnValues", "true"));
+       **/
 		return true;
 	}
 
@@ -578,7 +587,58 @@ public class SplunkJavaAgent {
 			}
 		}
 	}
+	
+	/**
+	public static void captureMethodParameterValues(String className, String methodName,
+			String desc,Object [] values){
+		
+		if (agent.traceMethodParameterValues) {
+			
+			SplunkLogEvent event = new SplunkLogEvent("method_param_values",
+					"splunkagent", true, false);
+			event.addPair("appName", agent.appName);
+			event.addPair("appID", agent.appID);
+			event.addPair("className", className);
+			event.addPair("methodName", methodName);
+			event.addPair("methodDesc", desc);
+			//event.addPair("foo", "bar");
+			addUserTags(event);
+			try {
+				agent.eventQueue.put(event);
+				// agent.eventQueue.offer(event,1000,TimeUnit.MILLISECONDS);
+			} catch (InterruptedException e) {
 
+			}
+			
+		}
+	}
+	
+    public static void captureMethodReturnValues(String className, String methodName,
+			String desc,Object [] values){
+		
+       if (agent.traceMethodReturnValues) {
+			
+    	   SplunkLogEvent event = new SplunkLogEvent("method_return_values",
+					"splunkagent", true, false);
+			event.addPair("appName", agent.appName);
+			event.addPair("appID", agent.appID);
+			event.addPair("className", className);
+			event.addPair("methodName", methodName);
+			event.addPair("methodDesc", desc);
+			//event.addPair("foo", "bar");
+			addUserTags(event);
+			try {
+				agent.eventQueue.put(event);
+				// agent.eventQueue.offer(event,1000,TimeUnit.MILLISECONDS);
+			} catch (InterruptedException e) {
+
+			}
+			
+		}
+
+	}
+    **/
+	
 	public static void throwableCaught(String className, String methodName,
 			String desc, Throwable t) {
 

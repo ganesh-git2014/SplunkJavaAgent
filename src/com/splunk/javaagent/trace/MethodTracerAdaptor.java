@@ -25,13 +25,91 @@ public class MethodTracerAdaptor extends AdviceAdapter {
 	@Override
 	public void visitCode() {
 		try {
+
 			super.visitCode();
+
 			super.visitLdcInsn(cName);
 			super.visitLdcInsn(mName);
 			super.visitLdcInsn(desc);
 			super.visitMethodInsn(Opcodes.INVOKESTATIC,
 					"com/splunk/javaagent/SplunkJavaAgent", "methodEntered",
 					"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+
+			/**
+			Type[] paramTypes = Type.getArgumentTypes(desc);
+			int paramLength = paramTypes.length;
+
+			// Create array with length equal to number of parameters
+			super.visitIntInsn(Opcodes.BIPUSH, paramLength);
+			super.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Object");
+			super.visitVarInsn(Opcodes.ASTORE, paramLength);
+
+			// Fill the created array with method parameters
+			int i = 0;
+			for (Type tp : paramTypes) {
+				super.visitVarInsn(Opcodes.ALOAD, paramLength);
+				super.visitIntInsn(Opcodes.BIPUSH, i);
+
+				if (tp.equals(Type.BOOLEAN_TYPE)) {
+					super.visitVarInsn(Opcodes.ILOAD, i);
+					super.visitMethodInsn(Opcodes.INVOKESTATIC,
+							"java/lang/Boolean", "valueOf",
+							"(Z)Ljava/lang/Boolean;");
+				} else if (tp.equals(Type.BYTE_TYPE)) {
+					super.visitVarInsn(Opcodes.ILOAD, i);
+					super.visitMethodInsn(Opcodes.INVOKESTATIC,
+							"java/lang/Byte", "valueOf", "(B)Ljava/lang/Byte;");
+				} else if (tp.equals(Type.CHAR_TYPE)) {
+					super.visitVarInsn(Opcodes.ILOAD, i);
+					super.visitMethodInsn(Opcodes.INVOKESTATIC,
+							"java/lang/Character", "valueOf",
+							"(C)Ljava/lang/Character;");
+				} else if (tp.equals(Type.SHORT_TYPE)) {
+					super.visitVarInsn(Opcodes.ILOAD, i);
+					super.visitMethodInsn(Opcodes.INVOKESTATIC,
+							"java/lang/Short", "valueOf",
+							"(S)Ljava/lang/Short;");
+				} else if (tp.equals(Type.INT_TYPE)) {
+					mv.visitVarInsn(Opcodes.ILOAD, i);
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+							"java/lang/Integer", "valueOf",
+							"(I)Ljava/lang/Integer;");
+				} else if (tp.equals(Type.LONG_TYPE)) {
+					super.visitVarInsn(Opcodes.LLOAD, i);
+					super.visitMethodInsn(Opcodes.INVOKESTATIC,
+							"java/lang/Long", "valueOf", "(J)Ljava/lang/Long;");
+					i++;
+				} else if (tp.equals(Type.FLOAT_TYPE)) {
+					super.visitVarInsn(Opcodes.FLOAD, i);
+					super.visitMethodInsn(Opcodes.INVOKESTATIC,
+							"java/lang/Float", "valueOf",
+							"(F)Ljava/lang/Float;");
+				} else if (tp.equals(Type.DOUBLE_TYPE)) {
+					super.visitVarInsn(Opcodes.DLOAD, i);
+					super.visitMethodInsn(Opcodes.INVOKESTATIC,
+							"java/lang/Double", "valueOf",
+							"(D)Ljava/lang/Double;");
+					i++;
+				} else
+					super.visitVarInsn(Opcodes.ALOAD, i);
+
+				super.visitInsn(Opcodes.AASTORE);
+				i++;
+			}
+
+			// Load class name and method name
+			super.visitLdcInsn(this.cName);
+			super.visitLdcInsn(this.mName);
+			super.visitLdcInsn(this.desc);
+			// Load the array of parameters that we created
+			super.visitVarInsn(Opcodes.ALOAD, paramLength);
+
+			super.visitMethodInsn(Opcodes.INVOKESTATIC,
+					"com/splunk/javaagent/SplunkJavaAgent",
+					"captureMethodParameterValues",
+					"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;)V");
+            **/
+			
 		} catch (Exception e) {
 		}
 	}

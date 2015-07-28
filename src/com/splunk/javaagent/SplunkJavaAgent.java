@@ -1,6 +1,7 @@
 package com.splunk.javaagent;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
@@ -31,8 +32,8 @@ public class SplunkJavaAgent {
 	private List<FilterListItem> blackList;
 	private boolean traceMethodExited;
 	private boolean traceMethodEntered;
-	//private boolean traceMethodParameterValues;
-	//private boolean traceMethodReturnValues;
+	// private boolean traceMethodParameterValues;
+	// private boolean traceMethodReturnValues;
 	private boolean traceClassLoaded;
 	private boolean traceErrors;
 	private boolean traceJMX;
@@ -50,8 +51,6 @@ public class SplunkJavaAgent {
 
 	private TransporterThread transporterThread;
 
-	
-
 	public SplunkJavaAgent() {
 
 		this.whiteList = new ArrayList<FilterListItem>();
@@ -65,7 +64,7 @@ public class SplunkJavaAgent {
 		try {
 			agent = new SplunkJavaAgent();
 
-			if (!agent.loadProperties())
+			if (!agent.loadProperties(agentArgument))
 				return;
 			if (!agent.initCommonProperties())
 				return;
@@ -109,11 +108,12 @@ public class SplunkJavaAgent {
 		this.traceErrors = Boolean.parseBoolean(agent.props.getProperty(
 				"trace.errors", "true"));
 		/**
-		this.traceMethodParameterValues = Boolean.parseBoolean(agent.props.getProperty(
-				"trace.methodParameterValues", "true"));
-		this.traceMethodReturnValues = Boolean.parseBoolean(agent.props.getProperty(
-				"trace.methodReturnValues", "true"));
-       **/
+		 * this.traceMethodParameterValues =
+		 * Boolean.parseBoolean(agent.props.getProperty(
+		 * "trace.methodParameterValues", "true")); this.traceMethodReturnValues
+		 * = Boolean.parseBoolean(agent.props.getProperty(
+		 * "trace.methodReturnValues", "true"));
+		 **/
 		return true;
 	}
 
@@ -487,12 +487,18 @@ public class SplunkJavaAgent {
 
 	}
 
-	private boolean loadProperties() {
+	private boolean loadProperties(String propsFile) {
 
 		this.props = new Properties();
-		InputStream in = ClassLoader
-				.getSystemResourceAsStream("splunkagent.properties");
+		InputStream in = null;
+
 		try {
+			if (propsFile == null || propsFile.length() == 0) {
+				in = ClassLoader.getSystemResourceAsStream("splunkagent.properties");
+			} else {
+				in = new FileInputStream(propsFile);
+			}
+
 			this.props.load(in);
 		} catch (IOException e) {
 			return false;
@@ -587,58 +593,47 @@ public class SplunkJavaAgent {
 			}
 		}
 	}
-	
+
 	/**
-	public static void captureMethodParameterValues(String className, String methodName,
-			String desc,Object [] values){
-		
-		if (agent.traceMethodParameterValues) {
-			
-			SplunkLogEvent event = new SplunkLogEvent("method_param_values",
-					"splunkagent", true, false);
-			event.addPair("appName", agent.appName);
-			event.addPair("appID", agent.appID);
-			event.addPair("className", className);
-			event.addPair("methodName", methodName);
-			event.addPair("methodDesc", desc);
-			//event.addPair("foo", "bar");
-			addUserTags(event);
-			try {
-				agent.eventQueue.put(event);
-				// agent.eventQueue.offer(event,1000,TimeUnit.MILLISECONDS);
-			} catch (InterruptedException e) {
+	 * public static void captureMethodParameterValues(String className, String
+	 * methodName, String desc,Object [] values){
+	 * 
+	 * if (agent.traceMethodParameterValues) {
+	 * 
+	 * SplunkLogEvent event = new SplunkLogEvent("method_param_values",
+	 * "splunkagent", true, false); event.addPair("appName", agent.appName);
+	 * event.addPair("appID", agent.appID); event.addPair("className",
+	 * className); event.addPair("methodName", methodName);
+	 * event.addPair("methodDesc", desc); //event.addPair("foo", "bar");
+	 * addUserTags(event); try { agent.eventQueue.put(event); //
+	 * agent.eventQueue.offer(event,1000,TimeUnit.MILLISECONDS); } catch
+	 * (InterruptedException e) {
+	 * 
+	 * }
+	 * 
+	 * } }
+	 * 
+	 * public static void captureMethodReturnValues(String className, String
+	 * methodName, String desc,Object [] values){
+	 * 
+	 * if (agent.traceMethodReturnValues) {
+	 * 
+	 * SplunkLogEvent event = new SplunkLogEvent("method_return_values",
+	 * "splunkagent", true, false); event.addPair("appName", agent.appName);
+	 * event.addPair("appID", agent.appID); event.addPair("className",
+	 * className); event.addPair("methodName", methodName);
+	 * event.addPair("methodDesc", desc); //event.addPair("foo", "bar");
+	 * addUserTags(event); try { agent.eventQueue.put(event); //
+	 * agent.eventQueue.offer(event,1000,TimeUnit.MILLISECONDS); } catch
+	 * (InterruptedException e) {
+	 * 
+	 * }
+	 * 
+	 * }
+	 * 
+	 * }
+	 **/
 
-			}
-			
-		}
-	}
-	
-    public static void captureMethodReturnValues(String className, String methodName,
-			String desc,Object [] values){
-		
-       if (agent.traceMethodReturnValues) {
-			
-    	   SplunkLogEvent event = new SplunkLogEvent("method_return_values",
-					"splunkagent", true, false);
-			event.addPair("appName", agent.appName);
-			event.addPair("appID", agent.appID);
-			event.addPair("className", className);
-			event.addPair("methodName", methodName);
-			event.addPair("methodDesc", desc);
-			//event.addPair("foo", "bar");
-			addUserTags(event);
-			try {
-				agent.eventQueue.put(event);
-				// agent.eventQueue.offer(event,1000,TimeUnit.MILLISECONDS);
-			} catch (InterruptedException e) {
-
-			}
-			
-		}
-
-	}
-    **/
-	
 	public static void throwableCaught(String className, String methodName,
 			String desc, Throwable t) {
 

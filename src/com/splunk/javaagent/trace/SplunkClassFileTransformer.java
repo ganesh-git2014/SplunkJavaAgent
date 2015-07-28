@@ -49,7 +49,7 @@ public class SplunkClassFileTransformer implements ClassFileTransformer {
 		ClassReader cr = new ClassReader(classFileBuffer);
 		ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
 		ClassTracerAdaptor ca = new ClassTracerAdaptor(cw);
-		cr.accept(ca, ClassReader.SKIP_FRAMES);
+		cr.accept(ca, 0);
 		return cw.toByteArray();
 
 	}

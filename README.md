@@ -1,4 +1,4 @@
-## Splunk Java Agent v0.5b
+## Splunk Java Agent v1.0
 
 ## Overview
 
@@ -34,7 +34,7 @@ monitor can be indexed and correlated and you can leverage all of the scalabilit
 ## Supported Java Runtime
 
 
-1. JRE 5+
+1. JRE 5,6,7,8
 2. JVMs : Hotspot , JRockit, OpenJDK, IBM J9
 
 ## Install
@@ -42,6 +42,12 @@ monitor can be indexed and correlated and you can leverage all of the scalabilit
 
 1. Uncompress splunkagent.tar.gz
 2. The agent is just a single jar file, splunkagent.jar, you should see this in the uncompressed directory.
+
+## Create a TCP input in Splunk
+
+Login to Splunk and browse to Data Inputs to setup a new TCP input.
+This is how the agent will by default stream the metrics to Splunk.
+Whatever port you designate must be configured in the agent properties also (splunk.transport.tcp.port) 
 
 ## Setup
 
@@ -66,6 +72,10 @@ All dependencies and resources are bundled into the jar file.
 You can configure the agent with the properties file "splunkagent.properties" that resides inside the jar file.
 The various options are detailed below.
 Open the jar , edit the file, close the jar.
+
+Alternatively you can pass the properties file in as an argument , rather than having to bundle it into the agent jar.
+Example : -javaagent:splunkagent.jar=/Users/foo/splunkagent.properties
+
 
 Note : unless you want incredibly verbose tracing , you will want to specify just the packages/classes/methods you are interested in profiling in the "agent.whitelist" property
 

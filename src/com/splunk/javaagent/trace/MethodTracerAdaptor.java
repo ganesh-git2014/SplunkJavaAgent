@@ -14,7 +14,7 @@ public class MethodTracerAdaptor extends AdviceAdapter {
 	public MethodTracerAdaptor(String owner, String name, MethodVisitor mv,
 			String desc, int access) {
 
-		super(Opcodes.ASM4, mv, access, name, desc);
+		super(Opcodes.ASM5, mv, access, name, desc);
 		this.mName = name;
 		this.mv = mv;
 		this.cName = owner;
@@ -22,6 +22,7 @@ public class MethodTracerAdaptor extends AdviceAdapter {
 
 	}
 
+	
 	@Override
 	public void visitCode() {
 		try {
@@ -33,7 +34,7 @@ public class MethodTracerAdaptor extends AdviceAdapter {
 			super.visitLdcInsn(desc);
 			super.visitMethodInsn(Opcodes.INVOKESTATIC,
 					"com/splunk/javaagent/SplunkJavaAgent", "methodEntered",
-					"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+					"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",false);
 
 			/**
 			Type[] paramTypes = Type.getArgumentTypes(desc);
@@ -135,7 +136,7 @@ public class MethodTracerAdaptor extends AdviceAdapter {
 						Opcodes.INVOKESTATIC,
 						"com/splunk/javaagent/SplunkJavaAgent",
 						"throwableCaught",
-						"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V");
+						"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V",false);
 			}
 
 			if (opcode == Opcodes.IRETURN || opcode == Opcodes.FRETURN
@@ -147,7 +148,7 @@ public class MethodTracerAdaptor extends AdviceAdapter {
 				super.visitLdcInsn(desc);
 				super.visitMethodInsn(Opcodes.INVOKESTATIC,
 						"com/splunk/javaagent/SplunkJavaAgent", "methodExited",
-						"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+						"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",false);
 			}
 
 			super.visitInsn(opcode);

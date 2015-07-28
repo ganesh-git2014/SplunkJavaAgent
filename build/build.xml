@@ -53,6 +53,7 @@
 
             <fileset file="${license_file}" />
             <fileset file="${readme_file}" />
+            <fileset file="${release_file}" />
         </copy>
         
         <unzip src="${lib}/asm-5.0.3.jar" dest="${temp_build}/${classes}"/>
@@ -70,7 +71,7 @@
 
             <fileset
                 dir="${temp_build}/${classes}"
-                excludes="com/splunk/javaagent/test/**" />
+                excludes="com/splunk/test/**" />
             
             <fileset
                 dir="${config}"

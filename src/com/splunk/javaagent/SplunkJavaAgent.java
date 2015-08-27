@@ -14,15 +14,23 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.concurrent.ArrayBlockingQueue;
+
+import javax.management.MBeanServer;
 import javax.management.MBeanServerConnection;
 import javax.management.ObjectName;
+
+import org.apache.log4j.Level;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 import com.splunk.javaagent.hprof.HprofDump;
 import com.splunk.javaagent.jmx.JMXMBeanPoller;
+import com.splunk.javaagent.jmx.mbean.JavaAgentMBean;
 import com.splunk.javaagent.trace.FilterListItem;
 import com.splunk.javaagent.trace.SplunkClassFileTransformer;
 import com.splunk.javaagent.transport.SplunkTransport;
 
-public class SplunkJavaAgent {
+public class SplunkJavaAgent implements JavaAgentMBean {
 
 	private static SplunkJavaAgent agent;
 
@@ -32,29 +40,31 @@ public class SplunkJavaAgent {
 	private List<FilterListItem> blackList;
 	private boolean traceMethodExited;
 	private boolean traceMethodEntered;
-	// private boolean traceMethodParameterValues;
-	// private boolean traceMethodReturnValues;
 	private boolean traceClassLoaded;
 	private boolean traceErrors;
 	private boolean traceJMX;
 	private boolean traceHprof;
 	private Map<String, Integer> jmxConfigFiles;
+	private int defaultJMXFrequency = 60;// seconds
 	private List<Byte> hprofRecordFilter;
 	private Map<Byte, List<Byte>> hprofHeapDumpSubRecordFilter;
 	private String hprofFile;
 	private int hprofFrequency = 600;// seconds
 	private Map<String, String> userTags;
 	private ArrayBlockingQueue<SplunkLogEvent> eventQueue;
-	private int queueSize = 10000;
+	private int queueSize = 100000;
 	private String appName;
 	private String appID;
+	private String loggingLevel;
+	private static Logger logger = Logger.getLogger(SplunkJavaAgent.class);
+
+	private boolean paused = false;
+	private JMXThread jmxThread;
+	private HprofThread hprofThread;
 
 	private TransporterThread transporterThread;
 
 	public SplunkJavaAgent() {
-
-		this.whiteList = new ArrayList<FilterListItem>();
-		this.blackList = new ArrayList<FilterListItem>();
 
 	}
 
@@ -62,6 +72,9 @@ public class SplunkJavaAgent {
 			Instrumentation instrumentation) {
 
 		try {
+
+			logger.info("Starting Splunk Java Agent");
+
 			agent = new SplunkJavaAgent();
 
 			if (!agent.loadProperties(agentArgument))
@@ -79,12 +92,18 @@ public class SplunkJavaAgent {
 			if (!agent.initHprof())
 				return;
 
+			MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+			ObjectName objName = new ObjectName("splunkjavaagent:type=agent");
+			mbs.registerMBean(agent, objName);
+
 			Runtime.getRuntime().addShutdownHook(new Thread() {
 				public void run() {
 					try {
 						if (agent.transport != null)
 							agent.transport.stop();
 					} catch (Exception e) {
+						logger.error("Error running Splunk Java Agent shutdown hook : "
+								+ e.getMessage());
 					}
 				}
 			});
@@ -92,12 +111,14 @@ public class SplunkJavaAgent {
 			instrumentation.addTransformer(new SplunkClassFileTransformer());
 
 		} catch (Throwable t) {
-
+			logger.error("Error starting Splunk Java Agent : " + t.getMessage());
 		}
 
 	}
 
 	private boolean initTracing() {
+
+		logger.info("Initialising tracing");
 
 		this.traceClassLoaded = Boolean.parseBoolean(agent.props.getProperty(
 				"trace.classLoaded", "true"));
@@ -107,17 +128,28 @@ public class SplunkJavaAgent {
 				"trace.methodExited", "true"));
 		this.traceErrors = Boolean.parseBoolean(agent.props.getProperty(
 				"trace.errors", "true"));
-		/**
-		 * this.traceMethodParameterValues =
-		 * Boolean.parseBoolean(agent.props.getProperty(
-		 * "trace.methodParameterValues", "true")); this.traceMethodReturnValues
-		 * = Boolean.parseBoolean(agent.props.getProperty(
-		 * "trace.methodReturnValues", "true"));
-		 **/
+		
 		return true;
 	}
 
+	private void restartHProf() {
+
+		if (this.traceHprof) {
+			logger.info("Restarting HPROF");
+			try {
+				hprofThread = new HprofThread(Thread.currentThread(),
+						this.hprofFrequency, this.hprofFile);
+				hprofThread.start();
+			} catch (Exception e) {
+				logger.error("Error restarting HPROF");
+			}
+
+		}
+	}
+
 	private boolean initHprof() {
+
+		logger.info("Initialising HPROF");
 
 		this.traceHprof = Boolean.parseBoolean(agent.props.getProperty(
 				"trace.hprof", "false"));
@@ -157,17 +189,35 @@ public class SplunkJavaAgent {
 				}
 			}
 			try {
-				HprofThread thread = new HprofThread(Thread.currentThread(),
-						this.hprofFrequency, this.hprofFile);
-				thread.start();
+				if (!paused) {
+					hprofThread = new HprofThread(Thread.currentThread(),
+							this.hprofFrequency, this.hprofFile);
+					hprofThread.start();
+				}
 			} catch (Exception e) {
+				logger.error("Error restarting HPROF");
 			}
 		}
 
 		return true;
 	}
 
+	private void restartJMX() {
+
+		if (this.traceJMX) {
+			logger.info("Restarting JMX");
+			Set<String> configFileNames = this.jmxConfigFiles.keySet();
+			for (String configFile : configFileNames) {
+				this.jmxThread = new JMXThread(Thread.currentThread(),
+						this.jmxConfigFiles.get(configFile), configFile);
+				jmxThread.start();
+			}
+		}
+	}
+
 	private boolean initJMX() {
+
+		logger.info("Initialising JMX");
 
 		this.traceJMX = Boolean.parseBoolean(agent.props.getProperty(
 				"trace.jmx", "false"));
@@ -177,6 +227,7 @@ public class SplunkJavaAgent {
 			String configFiles = props.getProperty("trace.jmx.configfiles", "");
 			String defaultFrequency = props.getProperty(
 					"trace.jmx.default.frequency", "60");
+			this.defaultJMXFrequency = Integer.parseInt(defaultFrequency);
 			StringTokenizer st = new StringTokenizer(configFiles, ",");
 			while (st.hasMoreTokens()) {
 				String token = st.nextToken();
@@ -186,11 +237,13 @@ public class SplunkJavaAgent {
 						Integer.parseInt(frequency));
 			}
 
-			Set<String> configFileNames = this.jmxConfigFiles.keySet();
-			for (String configFile : configFileNames) {
-				JMXThread thread = new JMXThread(Thread.currentThread(),
-						this.jmxConfigFiles.get(configFile), configFile);
-				thread.start();
+			if (!paused) {
+				Set<String> configFileNames = this.jmxConfigFiles.keySet();
+				for (String configFile : configFileNames) {
+					this.jmxThread = new JMXThread(Thread.currentThread(),
+							this.jmxConfigFiles.get(configFile), configFile);
+					jmxThread.start();
+				}
 			}
 		}
 
@@ -199,21 +252,20 @@ public class SplunkJavaAgent {
 
 	private boolean initCommonProperties() {
 
+		logger.info("Initialising common properties");
+
 		this.appName = props.getProperty("agent.app.name", "");
 		this.appID = props.getProperty("agent.app.instance", "");
 
+		this.paused = Boolean.parseBoolean(props.getProperty(
+				"agent.startPaused", "false"));
 		String tags = (String) props.getProperty("agent.userEventTags", "");
 		this.userTags = new HashMap<String, String>();
 
-		StringTokenizer st = new StringTokenizer(tags, ",");
-		while (st.hasMoreTokens()) {
-			String item = st.nextToken();
-			StringTokenizer st2 = new StringTokenizer(item, "=");
-			String key = st2.nextToken();
-			String value = st2.nextToken();
-			this.userTags.put(key, value);
+		this.loggingLevel = props.getProperty("agent.loggingLevel", "ERROR");
+		LogManager.getRootLogger().setLevel(Level.toLevel(loggingLevel));
 
-		}
+		setUserEventTags(tags);
 
 		return true;
 	}
@@ -221,14 +273,21 @@ public class SplunkJavaAgent {
 	class TransporterThread extends Thread {
 
 		Thread parent;
+		boolean stopped = false;
 
 		TransporterThread(Thread parent) {
 			this.parent = parent;
 		}
 
+		public void stopThread() {
+			this.stopped = true;
+		}
+
 		public void run() {
 
-			while (parent.isAlive()) {
+			logger.info("Running transporter thread");
+
+			while (parent.isAlive() && !stopped) {
 
 				try {
 					while (!agent.eventQueue.isEmpty()) {
@@ -239,7 +298,8 @@ public class SplunkJavaAgent {
 						}
 					}
 				} catch (Throwable t) {
-
+					logger.error("Error running transporter thread : "
+							+ t.getMessage());
 				}
 				try {
 					Thread.sleep(500);
@@ -251,12 +311,86 @@ public class SplunkJavaAgent {
 
 	}
 
+	class PropsFileCheckerThread extends Thread {
+
+		File file;
+		long lastModified;
+
+		PropsFileCheckerThread(File file) {
+			this.file = file;
+			this.lastModified = file.lastModified();
+
+		}
+
+		public void run() {
+
+			while (true) {
+
+				try {
+					
+					long modTime = file.lastModified();
+
+					// props file changed
+					if (modTime > this.lastModified) {
+
+						logger.info("Detected that props file has changed , reloading.");
+						// pause agent
+						agent.pause();
+
+						// load in mew props
+						this.lastModified = modTime;
+						InputStream in = null;
+						try {
+							in = new FileInputStream(file);
+							agent.props.load(in);
+						} catch (Exception e) {
+							logger.error("Error loading properties file :"
+									+ e.getMessage());
+						} finally {
+							if (in != null)
+								in.close();
+						}
+
+						agent.initCommonProperties();
+
+						agent.transporterThread.stopThread();
+						MBeanServer mbs = ManagementFactory
+								.getPlatformMBeanServer();
+						ObjectName objName = new ObjectName(
+								"splunkjavaagent:type=transport,impl=*");
+						mbs.unregisterMBean(objName);
+						agent.initTransport();
+
+						agent.initTracing();
+
+						agent.initFilters();
+
+						agent.initJMX();
+
+						agent.initHprof();
+
+					}
+
+					Thread.sleep(5000);// 5 secs
+
+				} catch (Throwable t) {
+					logger.error("Error running properties file checker thread :"
+							+ t.getMessage());
+				}
+
+			}
+
+		}
+	}
+
 	class JMXThread extends Thread {
 
 		Thread parent;
 		int frequencySeconds;
 		String configFile;
 		JMXMBeanPoller poller;
+
+		boolean stopped = false;
 
 		JMXThread(Thread parent, int frequencySeconds, String configFile) {
 			this.parent = parent;
@@ -266,9 +400,15 @@ public class SplunkJavaAgent {
 
 		}
 
+		public void stopThread() {
+			this.stopped = true;
+		}
+
 		public void run() {
 
-			while (parent.isAlive()) {
+			logger.info("Running JMX Thread");
+
+			while (parent.isAlive() && !stopped) {
 
 				try {
 
@@ -280,7 +420,7 @@ public class SplunkJavaAgent {
 					poller.execute();
 
 				} catch (Throwable t) {
-
+					logger.error("Error running JMX thread : " + t.getMessage());
 				}
 
 			}
@@ -298,6 +438,7 @@ public class SplunkJavaAgent {
 		String operationName;
 		Object[] params;
 		String[] signature;
+		boolean stopped = false;
 
 		HprofThread(Thread parent, int frequencySeconds, String hprofFile)
 				throws Exception {
@@ -316,9 +457,15 @@ public class SplunkJavaAgent {
 			this.signature[1] = "boolean";
 		}
 
+		public void stopThread() {
+			this.stopped = true;
+		}
+
 		public void run() {
 
-			while (parent.isAlive()) {
+			logger.info("Running HPROF thread");
+
+			while (parent.isAlive() && !stopped) {
 				try {
 
 					Thread.sleep(frequencySeconds * 1000);
@@ -331,10 +478,12 @@ public class SplunkJavaAgent {
 						file.delete();
 
 					// do the dump via JMX
+					logger.info("Generating HPROF dump");
 					serverConnection.invoke(mbean, operationName, params,
 							signature);
 
 					// process the dump
+					logger.info("Processing HPROF dump");
 					file = new File(this.hprofFile);
 					HprofDump hprof = new HprofDump(file);
 					hprof.process();
@@ -344,7 +493,8 @@ public class SplunkJavaAgent {
 						file.delete();
 
 				} catch (Throwable e) {
-
+					logger.error("Error running HPROF thread : "
+							+ e.getMessage());
 				}
 
 			}
@@ -355,6 +505,11 @@ public class SplunkJavaAgent {
 	private boolean initFilters() {
 
 		try {
+			logger.info("Initialising filters");
+
+			this.whiteList = new ArrayList<FilterListItem>();
+			this.blackList = new ArrayList<FilterListItem>();
+
 			String white = (String) props.getProperty("trace.whitelist", "");
 			String black = (String) props.getProperty("trace.blacklist", "");
 
@@ -363,7 +518,7 @@ public class SplunkJavaAgent {
 			return true;
 
 		} catch (Exception e) {
-
+			logger.error("Error initialising filters : " + e.getMessage());
 			return false;
 		}
 	}
@@ -445,14 +600,17 @@ public class SplunkJavaAgent {
 
 	private boolean initTransport() {
 
-		try {
-			this.transport = (SplunkTransport) Class
-					.forName(
-							props.getProperty("splunk.transport.impl",
-									"com.splunk.javaagent.transport.SplunkTCPTransport"))
-					.newInstance();
-		} catch (Exception e) {
+		logger.info("Initialising transport");
 
+		String transportImpl = props.getProperty("splunk.transport.impl",
+				"com.splunk.javaagent.transport.SplunkTCPTransport");
+
+		try {
+			this.transport = (SplunkTransport) Class.forName(
+					props.getProperty(transportImpl)).newInstance();
+		} catch (Exception e) {
+			logger.error("Error initialising transport class object : "
+					+ e.getMessage());
 			return false;
 		}
 		Map<String, String> args = new HashMap<String, String>();
@@ -473,14 +631,24 @@ public class SplunkJavaAgent {
 		try {
 
 			this.eventQueue = new ArrayBlockingQueue<SplunkLogEvent>(queueSize);
+
 			this.transport.init(args);
-			this.transport.start();
+
+			if (!paused) {
+				this.transport.start();
+			}
+
 			this.transporterThread = new TransporterThread(
 					Thread.currentThread());
 			this.transporterThread.start();
 
-		} catch (Exception e) {
+			MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+			ObjectName objName = new ObjectName(
+					"splunkjavaagent:type=transport,impl=" + transportImpl);
+			mbs.registerMBean(this.transport, objName);
 
+		} catch (Exception e) {
+			logger.error("Initialising transport : " + e.getMessage());
 			return false;
 		}
 		return true;
@@ -489,18 +657,24 @@ public class SplunkJavaAgent {
 
 	private boolean loadProperties(String propsFile) {
 
+		logger.info("Loading properties file");
+
 		this.props = new Properties();
 		InputStream in = null;
 
 		try {
 			if (propsFile == null || propsFile.length() == 0) {
-				in = ClassLoader.getSystemResourceAsStream("splunkagent.properties");
+				in = ClassLoader
+						.getSystemResourceAsStream("splunkagent.properties");
 			} else {
-				in = new FileInputStream(propsFile);
+				File file = new File(propsFile);
+				in = new FileInputStream(file);
+				new PropsFileCheckerThread(file).start();
 			}
 
 			this.props.load(in);
 		} catch (IOException e) {
+			logger.error("Error loading properties file :" + e.getMessage());
 			return false;
 		} finally {
 			try {
@@ -515,7 +689,7 @@ public class SplunkJavaAgent {
 
 	public static void classLoaded(String className) {
 
-		if (agent.traceClassLoaded) {
+		if (agent.traceClassLoaded && !agent.paused) {
 			SplunkLogEvent event = new SplunkLogEvent("class_loaded",
 					"splunkagent", true, false);
 			event.addPair("appName", agent.appName);
@@ -541,7 +715,7 @@ public class SplunkJavaAgent {
 	public static void methodEntered(String className, String methodName,
 			String desc) {
 
-		if (agent.traceMethodEntered) {
+		if (agent.traceMethodEntered && !agent.paused) {
 			SplunkLogEvent event = new SplunkLogEvent("method_entered",
 					"splunkagent", true, false);
 			event.addPair("appName", agent.appName);
@@ -573,7 +747,7 @@ public class SplunkJavaAgent {
 	public static void methodExited(String className, String methodName,
 			String desc) {
 
-		if (agent.traceMethodExited) {
+		if (agent.traceMethodExited && !agent.paused) {
 
 			SplunkLogEvent event = new SplunkLogEvent("method_exited",
 					"splunkagent", true, false);
@@ -594,50 +768,10 @@ public class SplunkJavaAgent {
 		}
 	}
 
-	/**
-	 * public static void captureMethodParameterValues(String className, String
-	 * methodName, String desc,Object [] values){
-	 * 
-	 * if (agent.traceMethodParameterValues) {
-	 * 
-	 * SplunkLogEvent event = new SplunkLogEvent("method_param_values",
-	 * "splunkagent", true, false); event.addPair("appName", agent.appName);
-	 * event.addPair("appID", agent.appID); event.addPair("className",
-	 * className); event.addPair("methodName", methodName);
-	 * event.addPair("methodDesc", desc); //event.addPair("foo", "bar");
-	 * addUserTags(event); try { agent.eventQueue.put(event); //
-	 * agent.eventQueue.offer(event,1000,TimeUnit.MILLISECONDS); } catch
-	 * (InterruptedException e) {
-	 * 
-	 * }
-	 * 
-	 * } }
-	 * 
-	 * public static void captureMethodReturnValues(String className, String
-	 * methodName, String desc,Object [] values){
-	 * 
-	 * if (agent.traceMethodReturnValues) {
-	 * 
-	 * SplunkLogEvent event = new SplunkLogEvent("method_return_values",
-	 * "splunkagent", true, false); event.addPair("appName", agent.appName);
-	 * event.addPair("appID", agent.appID); event.addPair("className",
-	 * className); event.addPair("methodName", methodName);
-	 * event.addPair("methodDesc", desc); //event.addPair("foo", "bar");
-	 * addUserTags(event); try { agent.eventQueue.put(event); //
-	 * agent.eventQueue.offer(event,1000,TimeUnit.MILLISECONDS); } catch
-	 * (InterruptedException e) {
-	 * 
-	 * }
-	 * 
-	 * }
-	 * 
-	 * }
-	 **/
-
 	public static void throwableCaught(String className, String methodName,
 			String desc, Throwable t) {
 
-		if (agent.traceErrors) {
+		if (agent.traceErrors && !agent.paused) {
 
 			SplunkLogEvent event = new SplunkLogEvent("throwable_caught",
 					"splunkagent", true, false);
@@ -664,7 +798,26 @@ public class SplunkJavaAgent {
 	public static void hprofRecordEvent(byte recordType, byte subRecordType,
 			SplunkLogEvent event) {
 
-		if (traceHprofRecordType(recordType, subRecordType)) {
+		if (agent.traceJMX && !agent.paused) {
+			if (traceHprofRecordType(recordType, subRecordType)) {
+				event.addPair("appName", agent.appName);
+				event.addPair("appID", agent.appID);
+				addUserTags(event);
+				try {
+
+					agent.eventQueue.put(event);
+
+				} catch (InterruptedException e) {
+
+				}
+
+			}
+		}
+	}
+
+	public static void jmxEvent(SplunkLogEvent event) {
+
+		if (agent.traceJMX && !agent.paused) {
 			event.addPair("appName", agent.appName);
 			event.addPair("appID", agent.appID);
 			addUserTags(event);
@@ -675,21 +828,6 @@ public class SplunkJavaAgent {
 			} catch (InterruptedException e) {
 
 			}
-
-		}
-	}
-
-	public static void jmxEvent(SplunkLogEvent event) {
-
-		event.addPair("appName", agent.appName);
-		event.addPair("appID", agent.appID);
-		addUserTags(event);
-		try {
-
-			agent.eventQueue.put(event);
-
-		} catch (InterruptedException e) {
-
 		}
 
 	}
@@ -717,6 +855,256 @@ public class SplunkJavaAgent {
 			}
 		}
 		return false;
+	}
+
+	@Override
+	public String getAppName() {
+
+		return this.appName;
+	}
+
+	@Override
+	public String getAppInstance() {
+
+		return this.appID;
+	}
+
+	@Override
+	public String getUserEventTags() {
+
+		return this.userTags.toString();
+
+	}
+
+	@Override
+	public boolean getStartPaused() {
+
+		return this.paused;
+
+	}
+
+	@Override
+	public String getLoggingLevel() {
+
+		return this.loggingLevel;
+	}
+
+	@Override
+	public String getTracingBlacklist() {
+
+		return this.blackList.toString();
+	}
+
+	@Override
+	public String getTracingWhitelist() {
+
+		return this.whiteList.toString();
+	}
+
+	@Override
+	public boolean getTraceMethodEntered() {
+		return this.traceMethodEntered;
+	}
+
+	@Override
+	public boolean getTraceMethodExited() {
+		return this.traceMethodExited;
+	}
+
+	@Override
+	public boolean getTraceClassLoaded() {
+		return this.traceClassLoaded;
+	}
+
+	@Override
+	public boolean getTraceErrors() {
+		return this.traceErrors;
+	}
+
+	@Override
+	public boolean getTraceJMX() {
+		return this.traceJMX;
+	}
+
+	@Override
+	public String getTraceJMXConfigFiles() {
+		return this.jmxConfigFiles.toString();
+	}
+
+	@Override
+	public boolean getTraceHProf() {
+		return this.traceHprof;
+	}
+
+	@Override
+	public String getTraceHProfTempFile() {
+		return this.hprofFile;
+	}
+
+	@Override
+	public int getTraceHProfFrequency() {
+		return this.hprofFrequency;
+	}
+
+	@Override
+	public void setAppName(String val) {
+		this.appName = val;
+
+	}
+
+	@Override
+	public void setAppInstance(String val) {
+		this.appID = val;
+
+	}
+
+	@Override
+	public void setUserEventTags(String val) {
+
+		StringTokenizer st = new StringTokenizer(val, ",");
+		while (st.hasMoreTokens()) {
+			String item = st.nextToken();
+			StringTokenizer st2 = new StringTokenizer(item, "=");
+			String key = st2.nextToken();
+			String value = st2.nextToken();
+			this.userTags.put(key, value);
+
+		}
+
+	}
+
+	@Override
+	public void setLoggingLevel(String val) {
+		this.loggingLevel = val;
+		LogManager.getRootLogger().setLevel(Level.toLevel(val));
+
+	}
+
+	@Override
+	public void setTracingBlacklist(String val) {
+		this.blackList = new ArrayList<FilterListItem>();
+		addToList(val, this.blackList);
+
+	}
+
+	@Override
+	public void setTracingWhitelist(String val) {
+		this.whiteList = new ArrayList<FilterListItem>();
+		addToList(val, this.whiteList);
+
+	}
+
+	@Override
+	public void setTraceMethodEntered(boolean val) {
+		this.traceMethodEntered = val;
+
+	}
+
+	@Override
+	public void setTraceMethodExited(boolean val) {
+		this.traceMethodExited = val;
+
+	}
+
+	@Override
+	public void setTraceClassLoaded(boolean val) {
+		this.traceClassLoaded = val;
+
+	}
+
+	@Override
+	public void setTraceErrors(boolean val) {
+		this.traceErrors = val;
+
+	}
+
+	@Override
+	public void setTraceJMX(boolean val) {
+		this.traceJMX = val;
+
+	}
+
+	@Override
+	public void setTraceJMXConfigFiles(String val) {
+		if (this.jmxConfigFiles == null) {
+			this.jmxConfigFiles = new HashMap<String, Integer>();
+		}
+		StringTokenizer st = new StringTokenizer(val, ",");
+		while (st.hasMoreTokens()) {
+			String token = st.nextToken();
+			this.jmxConfigFiles.put(token + ".xml", this.defaultJMXFrequency);
+		}
+
+	}
+
+	@Override
+	public void setTraceJMXFrequency(int val) {
+		this.defaultJMXFrequency = val;
+
+	}
+
+	@Override
+	public void setTraceHProf(boolean val) {
+		this.traceHprof = val;
+
+	}
+
+	@Override
+	public void setTraceHProfTempFile(String val) {
+		this.hprofFile = val;
+
+	}
+
+	@Override
+	public void setTraceHProfFrequency(int val) {
+		this.hprofFrequency = val;
+
+	}
+
+	@Override
+	public void pause() throws Exception {
+		this.transport.stop();
+		this.paused = true;
+		stopJMX();
+		stopHprof();
+
+	}
+
+	@Override
+	public void unpause() throws Exception {
+		this.transport.start();
+		this.paused = false;
+		startJMX();
+		startHprof();
+
+	}
+
+	@Override
+	public void stopJMX() throws Exception {
+		this.jmxThread.stopThread();
+		this.jmxThread = null;
+
+	}
+
+	@Override
+	public void startJMX() throws Exception {
+		if (this.jmxThread == null)
+			this.restartJMX();
+
+	}
+
+	@Override
+	public void stopHprof() throws Exception {
+		this.hprofThread.stopThread();
+		this.hprofThread = null;
+
+	}
+
+	@Override
+	public void startHprof() throws Exception {
+		if (this.hprofThread == null)
+			this.restartHProf();
+
 	}
 
 }

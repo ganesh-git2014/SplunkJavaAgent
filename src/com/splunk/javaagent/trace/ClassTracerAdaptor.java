@@ -29,6 +29,7 @@ public class ClassTracerAdaptor extends ClassVisitor {
 			String signature, String[] exceptions) {
 		MethodVisitor mv = cv.visitMethod(access, name, desc, signature,
 				exceptions);
+
 		if (!isInterface && mv != null
 				&& !SplunkJavaAgent.isBlackListed(className, name)
 				&& SplunkJavaAgent.isWhiteListed(className, name)) {

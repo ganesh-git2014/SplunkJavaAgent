@@ -1,11 +1,14 @@
 package com.splunk.javaagent.jmx;
 
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.lang.management.ManagementFactory;
 import java.net.URL;
 import java.util.List;
 
 import javax.management.MBeanServerConnection;
 
+import org.apache.log4j.Logger;
 import org.exolab.castor.mapping.Mapping;
 import org.exolab.castor.xml.Unmarshaller;
 import org.xml.sax.InputSource;
@@ -17,8 +20,7 @@ import com.splunk.javaagent.jmx.config.Transport;
 
 public class JMXMBeanPoller {
 
-	// private static Logger logger = LoggerFactory
-	// .getLogger(JMXMBeanPoller.class);
+	private static Logger logger = Logger.getLogger(JMXMBeanPoller.class);
 
 	private JMXPoller config;
 	private Formatter formatter;
@@ -59,7 +61,7 @@ public class JMXMBeanPoller {
 
 	public void execute() {
 
-		// logger.info("Starting JMX Poller");
+		logger.info("Starting JMX Poller");
 		try {
 
 			if (this.config != null) {
@@ -78,14 +80,14 @@ public class JMXMBeanPoller {
 					// first iteration
 					this.registerNotifications = false;
 				} else {
-					// logger.error("No JMX servers have been specified");
+					logger.error("No JMX servers have been specified");
 				}
 			} else {
-				// logger.error("The root config object(JMXPoller) failed to initialize");
+				logger.error("The root config object(JMXPoller) failed to initialize");
 			}
 		} catch (Exception e) {
 
-			// logger.error("Error : " + e.getMessage());
+			logger.error("JMX Error : " + e.getMessage());
 			// System.exit(1);
 		}
 	}
@@ -99,12 +101,31 @@ public class JMXMBeanPoller {
 	 */
 	private static JMXPoller loadConfig(String configFileName) throws Exception {
 
+		InputStream in = null;
+		boolean foundFile = false;
+
+		// look inside the jar first
 		URL file = JMXMBeanPoller.class.getResource("/" + configFileName);
 
-		if (file == null) {
+		if (file != null) {
+			in = file.openStream();
+			foundFile = true;
+		} else {
+			try {
+				// look on the filesystem
+				in = new FileInputStream(configFileName);
+				foundFile = true;
+			} catch (Exception e) {
+				foundFile = false;
+			}
+
+		}
+
+		if (!foundFile) {
 			throw new Exception("The config file " + configFileName
 					+ " does not exist");
 		}
+
 		// xsd validation
 		InputSource inputSource = new InputSource(file.openStream());
 		SchemaValidator validator = new SchemaValidator();

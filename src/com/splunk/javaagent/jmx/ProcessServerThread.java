@@ -16,6 +16,7 @@ import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.CompositeType;
 import javax.management.openmbean.TabularData;
 
+import org.apache.log4j.Logger;
 
 import com.splunk.javaagent.SplunkLogEvent;
 import com.splunk.javaagent.jmx.config.Attribute;
@@ -35,7 +36,7 @@ import com.splunk.javaagent.jmx.transport.Transport;
  */
 public class ProcessServerThread extends Thread {
 
-	// private Logger logger;
+	private static Logger logger = Logger.getLogger(ProcessServerThread.class);
 
 	private MBeanServerConnection serverConnection;
 
@@ -63,7 +64,6 @@ public class ProcessServerThread extends Thread {
 			Transport transport, boolean registerNotificationListeners,
 			MBeanServerConnection serverConnection) {
 
-		// this.logger = LoggerFactory.getLogger(this.getName());
 		this.serverConfig = serverConfig;
 		this.formatter = formatter;
 		this.transport = transport;
@@ -138,14 +138,16 @@ public class ProcessServerThread extends Thread {
 											.getOutputname();
 									if (outputname != null
 											&& !outputname.isEmpty())
-										//mBeanAttributes.put(operation
-										//.getOutputname(),
-										//resolveObjectToString(result));
-								extractAttributeValue(result,mBeanAttributes,operation.getOutputname());
+										// mBeanAttributes.put(operation
+										// .getOutputname(),
+										// resolveObjectToString(result));
+										extractAttributeValue(result,
+												mBeanAttributes,
+												operation.getOutputname());
 								} catch (Exception e) {
 
-									// logger.error("Error : " +
-									// e.getMessage());
+									logger.error("JMX Error : "
+											+ e.getMessage());
 								}
 							}
 						}
@@ -163,8 +165,8 @@ public class ProcessServerThread extends Thread {
 											attribute.getName());
 								} catch (Exception e) {
 
-									// logger.error("Error : " +
-									// e.getMessage());
+									logger.error("JMX Error : "
+											+ e.getMessage());
 								}
 
 							}
@@ -181,7 +183,7 @@ public class ProcessServerThread extends Thread {
 								// if the attribute pattern is multi level, loop
 								// through the levels until the value is found
 								for (String token : tokens) {
-									
+
 									// get root attribute object the first time
 									if (attributeValue == null) {
 										try {
@@ -191,21 +193,19 @@ public class ProcessServerThread extends Thread {
 
 										} catch (Exception e) {
 
-											// logger.error("Error : "
-											// + e.getMessage());
+											logger.error("JMX Error : "
+													+ e.getMessage());
 										}
 									} else if (attributeValue instanceof CompositeData) {
 										try {
-											
+
 											attributeValue = ((CompositeData) attributeValue)
 													.get(token);
-											
-											
+
 										} catch (Exception e) {
 
-											e.printStackTrace();
-											// logger.error("Error : "
-											// + e.getMessage());
+											logger.error("JMX Error : "
+													+ e.getMessage());
 										}
 									} else if (attributeValue instanceof TabularData) {
 										try {
@@ -217,15 +217,14 @@ public class ProcessServerThread extends Thread {
 
 										} catch (Exception e) {
 
-											// logger.error("Error : "
-											// + e.getMessage());
+											logger.error("JMX Error : "
+													+ e.getMessage());
 										}
-									}
-									else {
-										
+									} else {
+
 									}
 								}
-								
+
 								mBeanAttributes.put(singular.getOutputname(),
 										resolveObjectToString(attributeValue));
 
@@ -245,8 +244,8 @@ public class ProcessServerThread extends Thread {
 
 		} catch (Exception e) {
 
-			// logger.error(serverConfig + ",systemErrorMessage=\""
-			// + e.getMessage() + "\"");
+			logger.error(serverConfig + ",systemErrorMessage=\""
+					+ e.getMessage() + "\"");
 		} finally {
 
 			if (transport != null) {
@@ -278,7 +277,7 @@ public class ProcessServerThread extends Thread {
 						resolveObjectToString(attributeValue));
 			} catch (Exception e) {
 
-				// logger.error("Error : " + e.getMessage());
+				logger.error("JMX Error : " + e.getMessage());
 			}
 		} else if (attributeValue instanceof Object[]) {
 			try {
@@ -290,7 +289,7 @@ public class ProcessServerThread extends Thread {
 				}
 			} catch (Exception e) {
 
-				// logger.error("Error : " + e.getMessage());
+				logger.error("JMX Error : " + e.getMessage());
 			}
 		} else if (attributeValue instanceof Collection) {
 			try {
@@ -302,7 +301,7 @@ public class ProcessServerThread extends Thread {
 				}
 			} catch (Exception e) {
 
-				// logger.error("Error : " + e.getMessage());
+				logger.error("JMX Error : " + e.getMessage());
 			}
 		} else if (attributeValue instanceof CompositeData) {
 
@@ -319,7 +318,7 @@ public class ProcessServerThread extends Thread {
 
 			} catch (Exception e) {
 
-				// logger.error("Error : " + e.getMessage());
+				logger.error("JMX Error : " + e.getMessage());
 			}
 		} else if (attributeValue instanceof TabularData) {
 			try {
@@ -334,7 +333,7 @@ public class ProcessServerThread extends Thread {
 				}
 
 			} catch (Exception e) {
-				// logger.error("Error : " + e.getMessage());
+				logger.error("JMX Error : " + e.getMessage());
 			}
 		} else {
 
@@ -343,7 +342,7 @@ public class ProcessServerThread extends Thread {
 						resolveObjectToString(attributeValue));
 			} catch (Exception e) {
 
-				// logger.error("Error : " + e.getMessage());
+				logger.error("JMX Error : " + e.getMessage());
 			}
 		}
 

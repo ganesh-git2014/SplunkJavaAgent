@@ -3,6 +3,8 @@ package com.splunk.javaagent.transport;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.log4j.Logger;
+
 /**
  * Common base class for all Splunk Input types. Currently just has shared logic
  * for queuing up events.
@@ -11,6 +13,8 @@ import java.util.List;
  * 
  */
 public abstract class SplunkInput {
+
+	private static Logger logger = Logger.getLogger(SplunkInput.class);
 
 	// data size multipliers
 	private static final int KB = 1024;
@@ -39,15 +43,18 @@ public abstract class SplunkInput {
 		long eventSize = event.getBytes().length;
 
 		if (queueHasCapacity(eventSize)) {
+			logger.info("Enqueuing event");
 			queue.add(event);
 			currentQueueSizeInBytes += eventSize;
 		} else if (dropEventsOnQueueFull) {
+			logger.info("Queue is full , dropping events to accomodate");
 			queue.clear();
 			queue.add(event);
 			currentQueueSizeInBytes = eventSize;
 
 		} else {
 			// bummer , queue is full up
+			logger.info("Queue is full , ignoring events");
 
 		}
 	}
@@ -124,6 +131,10 @@ public abstract class SplunkInput {
 
 	public long getMaxQueueSize() {
 		return maxQueueSize;
+	}
+
+	public long getCurrentQueueSize() {
+		return queue.size();
 	}
 
 	/**

@@ -7,12 +7,18 @@ import java.io.Writer;
 import java.net.Socket;
 import java.util.Map;
 
-import com.splunk.javaagent.SplunkLogEvent;
+import org.apache.log4j.Logger;
 
-public class SplunkTCPTransport extends SplunkInput implements SplunkTransport {
+import com.splunk.javaagent.SplunkLogEvent;
+import com.splunk.javaagent.jmx.mbean.TCPTransportMBean;
+
+public class SplunkTCPTransport extends SplunkInput implements SplunkTransport,
+		TCPTransportMBean {
+
+	private static Logger logger = Logger.getLogger(SplunkTCPTransport.class);
 
 	// connection props
-	private String host = "";
+	private String host = "localhost";
 	private int port;
 
 	// streaming objects
@@ -23,6 +29,8 @@ public class SplunkTCPTransport extends SplunkInput implements SplunkTransport {
 	@Override
 	public void init(Map<String, String> args) throws Exception {
 
+		logger.info("Initialising TCP transport");
+
 		this.host = args.get("splunk.transport.tcp.host");
 		this.port = Integer.parseInt(args.get("splunk.transport.tcp.port"));
 		setDropEventsOnQueueFull(Boolean.parseBoolean(args
@@ -32,6 +40,9 @@ public class SplunkTCPTransport extends SplunkInput implements SplunkTransport {
 
 	@Override
 	public void start() throws Exception {
+
+		logger.info("Starting TCP transport");
+
 		streamSocket = new Socket(host, port);
 		if (streamSocket.isConnected()) {
 			ostream = streamSocket.getOutputStream();
@@ -44,6 +55,8 @@ public class SplunkTCPTransport extends SplunkInput implements SplunkTransport {
 	public void stop() throws Exception {
 		try {
 
+			logger.info("Stopping TCP transport");
+
 			if (writerOut != null) {
 				writerOut.flush();
 				writerOut.close();
@@ -52,6 +65,16 @@ public class SplunkTCPTransport extends SplunkInput implements SplunkTransport {
 			}
 		} catch (Exception e) {
 		}
+
+	}
+
+	@Override
+	public void restart() throws Exception {
+
+		logger.info("Restarting TCP transport");
+
+		stop();
+		start();
 
 	}
 
@@ -76,6 +99,9 @@ public class SplunkTCPTransport extends SplunkInput implements SplunkTransport {
 
 		} catch (IOException e) {
 
+			logger.error("Error sending message via HEC transport : "
+					+ e.getMessage());
+
 			// something went wrong , put message on the queue for retry
 			enqueue(currentMessage);
 			try {
@@ -88,6 +114,39 @@ public class SplunkTCPTransport extends SplunkInput implements SplunkTransport {
 			} catch (Exception e2) {
 			}
 		}
+
+	}
+
+	@Override
+	public String getHost() {
+		return this.host;
+	}
+
+	@Override
+	public int getPort() {
+		return this.port;
+	}
+
+	@Override
+	public boolean getDropEventsOnFullQueue() {
+		return this.isDropEventsOnQueueFull();
+	}
+
+	@Override
+	public void setHost(String val) {
+		this.host = val;
+
+	}
+
+	@Override
+	public void setPort(int val) {
+		this.port = val;
+
+	}
+
+	@Override
+	public void setDropEventsOnFullQueue(boolean val) {
+		this.setDropEventsOnQueueFull(val);
 
 	}
 

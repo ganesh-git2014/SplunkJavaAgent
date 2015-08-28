@@ -10,10 +10,10 @@ import java.util.Map;
 import org.apache.log4j.Logger;
 
 import com.splunk.javaagent.SplunkLogEvent;
-import com.splunk.javaagent.jmx.mbean.TCPTransportMBean;
+import com.splunk.javaagent.jmx.mbean.TCPTransportMXBean;
 
 public class SplunkTCPTransport extends SplunkInput implements SplunkTransport,
-		TCPTransportMBean {
+		TCPTransportMXBean {
 
 	private static Logger logger = Logger.getLogger(SplunkTCPTransport.class);
 

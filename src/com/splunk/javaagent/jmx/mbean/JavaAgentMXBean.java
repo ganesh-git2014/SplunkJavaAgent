@@ -1,6 +1,6 @@
 package com.splunk.javaagent.jmx.mbean;
 
-public interface JavaAgentMBean {
+public interface JavaAgentMXBean {
 
 	// attributes
 

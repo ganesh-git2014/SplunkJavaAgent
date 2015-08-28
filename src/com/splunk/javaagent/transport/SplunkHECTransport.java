@@ -2,8 +2,10 @@ package com.splunk.javaagent.transport;
 
 import java.net.URI;
 import java.util.Map;
+import java.util.concurrent.Future;
 
 import org.apache.http.HttpHost;
+import org.apache.http.HttpResponse;
 
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URIBuilder;
@@ -18,10 +20,10 @@ import org.apache.http.nio.reactor.ConnectingIOReactor;
 import org.apache.log4j.Logger;
 
 import com.splunk.javaagent.SplunkLogEvent;
-import com.splunk.javaagent.jmx.mbean.HECTransportMBean;
+import com.splunk.javaagent.jmx.mbean.HECTransportMXBean;
 
 public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
-		HECTransportMBean {
+		HECTransportMXBean {
 
 	private static Logger logger = Logger.getLogger(SplunkHECTransport.class);
 
@@ -86,12 +88,12 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 
 		try {
 			setDropEventsOnQueueFull(Boolean.parseBoolean(args
-					.get("splunk.transport.tcp.dropEventsOnQueueFull")));
+					.get("splunk.transport.hec.dropEventsOnQueueFull")));
 		} catch (Exception e) {
 
 		}
 		try {
-			setMaxQueueSize(args.get("splunk.transport.tcp.maxQueueSize"));
+			setMaxQueueSize(args.get("splunk.transport.hec.maxQueueSize"));
 		} catch (Exception e) {
 
 		}
@@ -164,7 +166,10 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 					ContentType.create("application/json", "UTF-8"));
 
 			post.setEntity(requestEntity);
-			httpClient.execute(post, null);
+			Future<HttpResponse> future = httpClient.execute(post, null);
+			HttpResponse response = future.get();
+            //System.out.println(response.getStatusLine());
+            //System.out.println(EntityUtils.toString(response.getEntity()));
 
 		} catch (Exception e) {
 

@@ -3,10 +3,11 @@
 <log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/"
     debug="false" >
 
-    <appender name="ROLL" class="org.apache.log4j.rolling.RollingFileAppender">
-    <rollingPolicy class="org.apache.log4j.rolling.TimeBasedRollingPolicy">
-      <param name="FileNamePattern" value="splunkagent.%d{yyyy-MM-dd}.log"/>
-    </rollingPolicy>
+    <appender name="ROLL" class="org.apache.log4j.DailyRollingFileAppender">
+        
+        <param name="file" value="splunkagent.log" />
+        <param name="DatePattern" value="'.'yyyy-MM-dd" />
+     
 
     <layout class="org.apache.log4j.PatternLayout">
       <param name="ConversionPattern" value="%d{HH:mm:ss,SSS} %c{1} %p - %m%n"/>

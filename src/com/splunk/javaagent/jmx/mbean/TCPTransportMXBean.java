@@ -1,6 +1,6 @@
 package com.splunk.javaagent.jmx.mbean;
 
-public interface TCPTransportMBean {
+public interface TCPTransportMXBean {
 
 	// attributes
 
@@ -20,7 +20,7 @@ public interface TCPTransportMBean {
 
 	public void setPort(int val);
 
-	public void setMaxQueueSize(String val);
+	public void setMaxQueueSize(long val);
 
 	public void setDropEventsOnFullQueue(boolean val);
 

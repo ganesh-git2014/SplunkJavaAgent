@@ -1,6 +1,6 @@
 package com.splunk.javaagent.jmx.mbean;
 
-public interface HECTransportMBean {
+public interface HECTransportMXBean {
 
 	// attributes
 
@@ -44,7 +44,7 @@ public interface HECTransportMBean {
 
 	public void setSourcetype(String val);
 
-	public void setMaxQueueSize(String val);
+	public void setMaxQueueSize(long val);
 
 	public void setDropEventsOnFullQueue(boolean val);
 

@@ -25,17 +25,18 @@ import org.apache.log4j.Logger;
 
 import com.splunk.javaagent.hprof.HprofDump;
 import com.splunk.javaagent.jmx.JMXMBeanPoller;
-import com.splunk.javaagent.jmx.mbean.JavaAgentMBean;
+import com.splunk.javaagent.jmx.mbean.JavaAgentMXBean;
 import com.splunk.javaagent.trace.FilterListItem;
 import com.splunk.javaagent.trace.SplunkClassFileTransformer;
 import com.splunk.javaagent.transport.SplunkTransport;
 
-public class SplunkJavaAgent implements JavaAgentMBean {
+public class SplunkJavaAgent implements JavaAgentMXBean {
 
 	private static SplunkJavaAgent agent;
 
 	private Properties props;
 	private SplunkTransport transport;
+	private String transportImpl;
 	private List<FilterListItem> whiteList;
 	private List<FilterListItem> blackList;
 	private boolean traceMethodExited;
@@ -109,7 +110,6 @@ public class SplunkJavaAgent implements JavaAgentMBean {
 			});
 
 			instrumentation.addTransformer(new SplunkClassFileTransformer());
-
 		} catch (Throwable t) {
 			logger.error("Error starting Splunk Java Agent : " + t.getMessage());
 		}
@@ -342,6 +342,7 @@ public class SplunkJavaAgent implements JavaAgentMBean {
 						InputStream in = null;
 						try {
 							in = new FileInputStream(file);
+							agent.props = new Properties();
 							agent.props.load(in);
 						} catch (Exception e) {
 							logger.error("Error loading properties file :"
@@ -357,7 +358,7 @@ public class SplunkJavaAgent implements JavaAgentMBean {
 						MBeanServer mbs = ManagementFactory
 								.getPlatformMBeanServer();
 						ObjectName objName = new ObjectName(
-								"splunkjavaagent:type=transport,impl=*");
+								"splunkjavaagent:type=transport,impl="+transportImpl);
 						mbs.unregisterMBean(objName);
 						agent.initTransport();
 
@@ -374,6 +375,7 @@ public class SplunkJavaAgent implements JavaAgentMBean {
 					Thread.sleep(5000);// 5 secs
 
 				} catch (Throwable t) {
+					
 					logger.error("Error running properties file checker thread :"
 							+ t.getMessage());
 				}
@@ -602,12 +604,13 @@ public class SplunkJavaAgent implements JavaAgentMBean {
 
 		logger.info("Initialising transport");
 
-		String transportImpl = props.getProperty("splunk.transport.impl",
+		this.transportImpl = props.getProperty("splunk.transport.impl",
 				"com.splunk.javaagent.transport.SplunkTCPTransport");
-
+       
 		try {
+		 
 			this.transport = (SplunkTransport) Class.forName(
-					props.getProperty(transportImpl)).newInstance();
+					transportImpl).newInstance();
 		} catch (Exception e) {
 			logger.error("Error initialising transport class object : "
 					+ e.getMessage());
@@ -1081,8 +1084,10 @@ public class SplunkJavaAgent implements JavaAgentMBean {
 
 	@Override
 	public void stopJMX() throws Exception {
+		if(this.jmxThread != null){
 		this.jmxThread.stopThread();
 		this.jmxThread = null;
+		}
 
 	}
 
@@ -1095,8 +1100,10 @@ public class SplunkJavaAgent implements JavaAgentMBean {
 
 	@Override
 	public void stopHprof() throws Exception {
+		if(this.hprofThread != null){
 		this.hprofThread.stopThread();
 		this.hprofThread = null;
+		}
 
 	}
 

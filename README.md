@@ -147,6 +147,10 @@ More info here : http://docs.oracle.com/javase/7/docs/technotes/guides/managemen
 * splunk.transport.hec.index : index for the tracing data
 * splunk.transport.hec.source : source for the tracing data
 * splunk.transport.hec.sourcetype : sourcetypefor the tracing data
+* splunk.transport.hec.batchMode : batch upload events vs sending single events , defaults to false
+* splunk.transport.hec.maxBatchSizeBytes : will flush a batch upload at this size, defaults to 1MB
+* splunk.transport.hec.maxBatchSizeEvents : will flush a batch upload at this number of events, defaults to 100
+* splunk.transport.hec.maxInactiveTimeBeforeBatchFlush : will flush a batch upload after this period of inactivity , defaults to 5000 (5 secs)
 
 ## Tracing Options
 

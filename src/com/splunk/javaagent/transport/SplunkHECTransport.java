@@ -1,14 +1,24 @@
 package com.splunk.javaagent.transport;
 
 import java.net.URI;
+import java.security.cert.X509Certificate;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
 
 import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.config.Registry;
+import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
@@ -16,7 +26,12 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
 import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
+import org.apache.http.nio.conn.NoopIOSessionStrategy;
+import org.apache.http.nio.conn.SchemeIOSessionStrategy;
+import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.nio.reactor.ConnectingIOReactor;
+import org.apache.http.ssl.SSLContexts;
+import org.apache.http.ssl.TrustStrategy;
 import org.apache.log4j.Logger;
 
 import com.splunk.javaagent.SplunkLogEvent;
@@ -36,8 +51,24 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 	private String source = "javaagent_input_hec";
 	private String sourcetype = "javaagent";
 
+	private boolean batchMode = false;
+	private long maxBatchSizeBytes = 1 * MB; // 1MB
+	private long maxBatchSizeEvents = 100; // 100 events
+	private long maxInactiveTimeBeforeBatchFlush = 5000;// 5 secs
+
+	// batch buffer
+	private List<String> batchBuffer;
+	private long currentBatchSizeBytes = 0;
+	private long lastEventReceivedTime;
+
 	private CloseableHttpAsyncClient httpClient;
 	private URI uri;
+
+	private static final HostnameVerifier HOSTNAME_VERIFIER = new HostnameVerifier() {
+		public boolean verify(String s, SSLSession sslSession) {
+			return true;
+		}
+	};
 
 	@Override
 	public void init(Map<String, String> args) throws Exception {
@@ -70,6 +101,33 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 		} catch (Exception e) {
 
 		}
+
+		try {
+			setBatchMode(Boolean.parseBoolean(args
+					.get("splunk.transport.hec.batchMode")));
+		} catch (Exception e) {
+
+		}
+		try {
+			setMaxBatchSizeBytes(args
+					.get("splunk.transport.hec.maxBatchSizeBytes"));
+		} catch (Exception e) {
+
+		}
+		try {
+			setMaxBatchSizeEvents(Long.parseLong(args
+					.get("splunk.transport.hec.maxBatchSizeEvents")));
+		} catch (Exception e) {
+
+		}
+		try {
+			setMaxInactiveTimeBeforeBatchFlush(Long
+					.parseLong(args
+							.get("splunk.transport.hec.maxInactiveTimeBeforeBatchFlush")));
+		} catch (Exception e) {
+
+		}
+
 		try {
 			setSource(args.get("splunk.transport.hec.source"));
 		} catch (Exception e) {
@@ -104,9 +162,21 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 
 		logger.info("Starting HEC transport");
 
+		this.batchBuffer = Collections
+				.synchronizedList(new LinkedList<String>());
+		this.lastEventReceivedTime = System.currentTimeMillis();
+
+		Registry<SchemeIOSessionStrategy> sslSessionStrategy = RegistryBuilder
+				.<SchemeIOSessionStrategy> create()
+				.register("http", NoopIOSessionStrategy.INSTANCE)
+				.register(
+						"https",
+						new SSLIOSessionStrategy(getSSLContext(),
+								HOSTNAME_VERIFIER)).build();
+
 		ConnectingIOReactor ioReactor = new DefaultConnectingIOReactor();
 		PoolingNHttpClientConnectionManager cm = new PoolingNHttpClientConnectionManager(
-				ioReactor);
+				ioReactor, sslSessionStrategy);
 		cm.setMaxTotal(getPoolSize());
 
 		HttpHost splunk = new HttpHost(getHost(), getPort());
@@ -119,6 +189,83 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 				.setPath("/services/collector").build();
 
 		httpClient.start();
+
+		if (getBatchMode()) {
+			new BatchBufferActivityCheckerThread(this).start();
+		}
+
+	}
+
+	class BatchBufferActivityCheckerThread extends Thread {
+
+		SplunkHECTransport parent;
+
+		BatchBufferActivityCheckerThread(SplunkHECTransport parent) {
+
+			this.parent = parent;
+		}
+
+		public void run() {
+
+			while (true) {
+				String currentMessage = "";
+				try {
+					long currentTime = System.currentTimeMillis();
+					if ((currentTime - parent.lastEventReceivedTime) >= parent
+							.getMaxInactiveTimeBeforeBatchFlush()) {
+						if (batchBuffer.size() > 0) {
+							currentMessage = parent.rollOutBatchBuffer();
+							parent.batchBuffer.clear();
+							parent.currentBatchSizeBytes = 0;
+							parent.hecPost(currentMessage);
+						}
+					}
+
+					Thread.sleep(1000);
+				} catch (Exception e) {
+					// something went wrong , put message on the queue for retry
+					enqueue(currentMessage);
+					try {
+						parent.stop();
+					} catch (Exception e1) {
+					}
+
+					try {
+						parent.start();
+					} catch (Exception e2) {
+					}
+				}
+
+			}
+		}
+	}
+
+	private String rollOutBatchBuffer() {
+
+		StringBuffer sb = new StringBuffer();
+
+		for (String event : batchBuffer) {
+			sb.append(event);
+		}
+
+		return sb.toString();
+	}
+
+	private SSLContext getSSLContext() {
+		TrustStrategy acceptingTrustStrategy = new TrustStrategy() {
+			public boolean isTrusted(X509Certificate[] certificate,
+					String authType) {
+				return true;
+			}
+		};
+		SSLContext sslContext = null;
+		try {
+			sslContext = SSLContexts.custom()
+					.loadTrustMaterial(null, acceptingTrustStrategy).build();
+		} catch (Exception e) {
+			// Handle error
+		}
+		return sslContext;
 
 	}
 
@@ -146,10 +293,11 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 
 	@Override
 	public void send(SplunkLogEvent event) {
-		String message = event.toString();
-		message = wrapMessageInQuotes(message);
-		try {
 
+		String currentMessage = "";
+
+		try {
+			String message = wrapMessageInQuotes(event.toString());
 			// could use a JSON Object , but the JSON is so trivial , just
 			// building it with a StringBuffer
 			StringBuffer json = new StringBuffer();
@@ -159,17 +307,32 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 					.append("sourcetype\":\"").append(getSourcetype())
 					.append("\"").append("}");
 
-			HttpPost post = new HttpPost(uri);
-			post.addHeader("Authorization", "Splunk " + getToken());
+			currentMessage = json.toString();
 
-			StringEntity requestEntity = new StringEntity(json.toString(),
-					ContentType.create("application/json", "UTF-8"));
+			if (getBatchMode()) {
 
-			post.setEntity(requestEntity);
-			Future<HttpResponse> future = httpClient.execute(post, null);
-			HttpResponse response = future.get();
-            //System.out.println(response.getStatusLine());
-            //System.out.println(EntityUtils.toString(response.getEntity()));
+				lastEventReceivedTime = System.currentTimeMillis();
+				currentBatchSizeBytes += currentMessage.length();
+				batchBuffer.add(currentMessage);
+
+				if (flushBuffer()) {
+
+					currentMessage = rollOutBatchBuffer();
+					batchBuffer.clear();
+					currentBatchSizeBytes = 0;
+					hecPost(currentMessage);
+				}
+			} else {
+				hecPost(currentMessage);
+			}
+
+			// flush the queue
+			while (queueContainsEvents()) {
+
+				String messageOffQueue = dequeue();
+				currentMessage = messageOffQueue;
+				hecPost(currentMessage);
+			}
 
 		} catch (Exception e) {
 
@@ -177,7 +340,7 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 					+ e.getMessage());
 
 			// something went wrong , put message on the queue for retry
-			enqueue(message);
+			enqueue(currentMessage);
 			try {
 				stop();
 			} catch (Exception e1) {
@@ -188,6 +351,28 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 			} catch (Exception e2) {
 			}
 		}
+
+	}
+
+	private boolean flushBuffer() {
+
+		return (currentBatchSizeBytes >= getMaxBatchSizeBytes())
+				|| (batchBuffer.size() >= getMaxBatchSizeEvents());
+
+	}
+
+	private void hecPost(String currentMessage) throws Exception {
+		HttpPost post = new HttpPost(uri);
+		post.addHeader("Authorization", "Splunk " + getToken());
+
+		StringEntity requestEntity = new StringEntity(currentMessage,
+				ContentType.create("application/json", "UTF-8"));
+
+		post.setEntity(requestEntity);
+		Future<HttpResponse> future = httpClient.execute(post, null);
+		HttpResponse response = future.get();
+		// System.out.println(response.getStatusLine());
+		// System.out.println(EntityUtils.toString(response.getEntity()));
 
 	}
 
@@ -275,6 +460,70 @@ public class SplunkHECTransport extends SplunkInput implements SplunkTransport,
 	public void setPoolSize(int val) {
 		this.poolsize = val;
 
+	}
+
+	public boolean getBatchMode() {
+		return batchMode;
+	}
+
+	public void setBatchMode(boolean batchMode) {
+		this.batchMode = batchMode;
+	}
+
+	public long getMaxBatchSizeBytes() {
+		return maxBatchSizeBytes;
+	}
+
+	public void setMaxBatchSizeBytes(long maxBatchSizeBytes) {
+		this.maxBatchSizeBytes = maxBatchSizeBytes;
+	}
+
+	/**
+	 * Set the bacth size from the configured property String value. If parsing
+	 * fails , the default of 500KB will be used.
+	 * 
+	 * @param rawProperty
+	 *            in format [<integer>|<integer>[KB|MB|GB]]
+	 */
+	public void setMaxBatchSizeBytes(String rawProperty) {
+
+		int multiplier;
+		int factor;
+
+		if (rawProperty.endsWith("KB")) {
+			multiplier = KB;
+		} else if (rawProperty.endsWith("MB")) {
+			multiplier = MB;
+		} else if (rawProperty.endsWith("GB")) {
+			multiplier = GB;
+		} else {
+			return;
+		}
+		try {
+			factor = Integer.parseInt(rawProperty.substring(0,
+					rawProperty.length() - 2));
+		} catch (NumberFormatException e) {
+			return;
+		}
+		setMaxBatchSizeBytes(factor * multiplier);
+
+	}
+
+	public long getMaxBatchSizeEvents() {
+		return maxBatchSizeEvents;
+	}
+
+	public void setMaxBatchSizeEvents(long maxBatchSizeEvents) {
+		this.maxBatchSizeEvents = maxBatchSizeEvents;
+	}
+
+	public long getMaxInactiveTimeBeforeBatchFlush() {
+		return maxInactiveTimeBeforeBatchFlush;
+	}
+
+	public void setMaxInactiveTimeBeforeBatchFlush(
+			long maxInactiveTimeBeforeBatchFlush) {
+		this.maxInactiveTimeBeforeBatchFlush = maxInactiveTimeBeforeBatchFlush;
 	}
 
 }

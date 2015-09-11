@@ -17,9 +17,9 @@ public abstract class SplunkInput {
 	private static Logger logger = Logger.getLogger(SplunkInput.class);
 
 	// data size multipliers
-	private static final int KB = 1024;
-	private static final int MB = KB * 1024;
-	private static final int GB = MB * 1024;
+	public static final int KB = 1024;
+	public static final int MB = KB * 1024;
+	public static final int GB = MB * 1024;
 
 	// default to 500K
 	private long maxQueueSize = 500 * KB;

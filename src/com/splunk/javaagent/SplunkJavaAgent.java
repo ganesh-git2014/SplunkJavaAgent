@@ -128,7 +128,7 @@ public class SplunkJavaAgent implements JavaAgentMXBean {
 				"trace.methodExited", "true"));
 		this.traceErrors = Boolean.parseBoolean(agent.props.getProperty(
 				"trace.errors", "true"));
-		
+
 		return true;
 	}
 
@@ -327,7 +327,7 @@ public class SplunkJavaAgent implements JavaAgentMXBean {
 			while (true) {
 
 				try {
-					
+
 					long modTime = file.lastModified();
 
 					// props file changed
@@ -358,7 +358,8 @@ public class SplunkJavaAgent implements JavaAgentMXBean {
 						MBeanServer mbs = ManagementFactory
 								.getPlatformMBeanServer();
 						ObjectName objName = new ObjectName(
-								"splunkjavaagent:type=transport,impl="+transportImpl);
+								"splunkjavaagent:type=transport,impl="
+										+ transportImpl);
 						mbs.unregisterMBean(objName);
 						agent.initTransport();
 
@@ -375,7 +376,7 @@ public class SplunkJavaAgent implements JavaAgentMXBean {
 					Thread.sleep(5000);// 5 secs
 
 				} catch (Throwable t) {
-					
+
 					logger.error("Error running properties file checker thread :"
 							+ t.getMessage());
 				}
@@ -606,11 +607,11 @@ public class SplunkJavaAgent implements JavaAgentMXBean {
 
 		this.transportImpl = props.getProperty("splunk.transport.impl",
 				"com.splunk.javaagent.transport.SplunkTCPTransport");
-       
+
 		try {
-		 
-			this.transport = (SplunkTransport) Class.forName(
-					transportImpl).newInstance();
+
+			this.transport = (SplunkTransport) Class.forName(transportImpl)
+					.newInstance();
 		} catch (Exception e) {
 			logger.error("Error initialising transport class object : "
 					+ e.getMessage());
@@ -626,7 +627,7 @@ public class SplunkJavaAgent implements JavaAgentMXBean {
 
 		try {
 			this.queueSize = Integer.parseInt(props.getProperty(
-					"splunk.transport.internalQueueSize", "10000"));
+					"splunk.transport.internalQueueSize", "100000"));
 		} catch (NumberFormatException e) {
 
 		}
@@ -1084,9 +1085,9 @@ public class SplunkJavaAgent implements JavaAgentMXBean {
 
 	@Override
 	public void stopJMX() throws Exception {
-		if(this.jmxThread != null){
-		this.jmxThread.stopThread();
-		this.jmxThread = null;
+		if (this.jmxThread != null) {
+			this.jmxThread.stopThread();
+			this.jmxThread = null;
 		}
 
 	}
@@ -1100,9 +1101,9 @@ public class SplunkJavaAgent implements JavaAgentMXBean {
 
 	@Override
 	public void stopHprof() throws Exception {
-		if(this.hprofThread != null){
-		this.hprofThread.stopThread();
-		this.hprofThread = null;
+		if (this.hprofThread != null) {
+			this.hprofThread.stopThread();
+			this.hprofThread = null;
 		}
 
 	}

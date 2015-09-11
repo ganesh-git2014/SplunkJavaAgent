@@ -27,6 +27,14 @@ public interface HECTransportMXBean {
 
 	public boolean getDropEventsOnFullQueue();
 
+	public long getMaxBatchSizeEvents();
+
+	public long getMaxInactiveTimeBeforeBatchFlush();
+
+	public long getMaxBatchSizeBytes();
+
+	public boolean getBatchMode();
+
 	// setter
 	public void setHost(String val);
 
@@ -47,6 +55,15 @@ public interface HECTransportMXBean {
 	public void setMaxQueueSize(long val);
 
 	public void setDropEventsOnFullQueue(boolean val);
+
+	public void setBatchMode(boolean batchMode);
+
+	public void setMaxBatchSizeBytes(long maxBatchSizeBytes);
+
+	public void setMaxBatchSizeEvents(long maxBatchSizeEvents);
+
+	public void setMaxInactiveTimeBeforeBatchFlush(
+			long maxInactiveTimeBeforeBatchFlush);
 
 	// operations
 	public void start() throws Exception;
